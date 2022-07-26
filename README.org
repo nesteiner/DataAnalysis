@@ -1,0 +1,5 @@
+* 数据分析项目
+** New York City Airbnb Open Data
+[[https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data][竞赛链接]]
+[[file:./docs/newyork.org][文档]]
+[[https://www.kaggle.com/code/chirag9073/airbnb-analysis-visualization-and-prediction/notebook][文档参考链接]]
