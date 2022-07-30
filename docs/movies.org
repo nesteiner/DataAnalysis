@@ -244,7 +244,7 @@
                "Crime","Science Fiction","Horror","Family", "release_year"]
     _dataframes = groupby(select(dataframe, columns), :release_year)
     # p = plot()
-  
+
     # record: Dict{year, Dict{Name, Count}}
     record = Dict{Int, Dict{String, Int}}()
     for _dataframe in _dataframes
@@ -256,7 +256,7 @@
         record[year][column] = reduce(+, _dataframe[!, column])
       end
     end
-  
+
     _years = collect(keys(record))
     _countmaps = collect(values(record))
     indexs = sortperm(_years)
