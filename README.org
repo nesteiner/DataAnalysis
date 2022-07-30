@@ -8,3 +8,8 @@
 - [[https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata][kaggle 链接]]
 - [[file:docs/movies.org][文档]]
 - [[file:src/movies.jl][代码文件]]
+
+** Telco Customer Churn 电信客户流失
+- [[https://www.kaggle.com/datasets/blastchar/telco-customer-churn][kaggle 链接]]
+- [[file:docs/telco.org][文档]]
+- [[file:src/telco.jl][代码文件]]
