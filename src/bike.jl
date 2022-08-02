@@ -95,8 +95,8 @@ function plotTimeAndCount(dataframe::DataFrame, feature::Symbol)
   partcount = 24
   p = plot()
   for (_hours, _counts, labels) in Iterators.zip(Iterators.partition(hours, partcount),
-                                                Iterators.partition(counts, partcount),
-                                                Iterators.partition(features, partcount))
+                                                 Iterators.partition(counts, partcount),
+                                                 Iterators.partition(features, partcount))
     
     indexs = sortperm(_hours)
     xs = _hours[indexs]
@@ -124,38 +124,168 @@ boxplot(origindata[!, :season], origindata[!, :count]) |> display
 # ATTENTION holy shit is this !
 
 
-# MODULE another notebook
-# TODO plot month and count
-function plotMonthAndCount(dataframe::DataFrame)
-  groupDataframe = groupby(dataframe, [:year, :month])
-  months = Int[]
-  counts = Int[]
-  years = Int[]
-  for _dataframe in groupDataframe
-    year = first(_dataframe[!, :year])
-    month = first(_dataframe[!, :month])
-    count = reduce(+, _dataframe[!, :count])
-    push!(years, year)
-    push!(months, month)
-    push!(counts, count)
+# MODULE 预测
+
+function fetchTransformedTrainData(traindata::DataFrame)
+  function transformDateTime!(dataframe::DataFrame)
+    datetimes = map(x -> DateTime(x, "yyyy-mm-dd HH:MM:SS"), dataframe[!, :datetime])
+
+    years = map(year, datetimes)
+    months = map(month, datetimes)
+    days = map(day, datetimes)
+    weekdays = map(dayofweek, datetimes)
+    hours = map(hour, datetimes)
+    
+    dataframe[!, :year] = years
+    dataframe[!, :month] = months
+    dataframe[!, :weekday] = weekdays
+    dataframe[!, :day] = days
+    dataframe[!, :hour] = hours
+
+    return dataframe
   end
 
-  partcount = 12
-  p = plot()
-  for (_months, _counts, year) in Iterators.zip(Iterators.partition(months, partcount),
-                                                Iterators.partition(counts, partcount),
-                                                sort(unique(years)))
-    plot!(p, _months, _counts, label = string(year))
+  featureSelector = FeatureSelector(
+    features = [:datetime, :casual, :registered],
+    ignore = true
+  )
+  onehotEncoder = OneHotEncoder(
+    features = [:season, :holiday, :workingday, :weather]
+  )
+
+  function coerceCount!(dataframe::DataFrame)
+    coerce!(dataframe, Count => Continuous)
+    return dataframe
   end
-  
-  display(p)
+
+  transformModel = Pipeline(
+    transformDateTime!,
+    featureSelector,
+    onehotEncoder,
+    coerceCount!
+  )
+
+  transformMachine = machine(transformModel, traindata)
+  fit!(transformMachine)
+  # TODO 转换 traindata testdata
+  transformedTrainData = MLJ.transform(transformMachine, copy(traindata))
+  return transformedTrainData
 end
 
-plotMonthAndCount(origindata)
+function fetchTransformedTestData(testdata::DataFrame)
+  function transformDateTime!(dataframe::DataFrame)
+    datetimes = map(x -> DateTime(x, "yyyy-mm-dd HH:MM:SS"), dataframe[!, :datetime])
 
-# TODO plot holiday and count
-boxplot(origindata[!, :holiday], origindata[!, :count], xticks = (1:2, ["Non Holi
-day", "Holiday"])) |> display
+    years = map(year, datetimes)
+    months = map(month, datetimes)
+    days = map(day, datetimes)
+    weekdays = map(dayofweek, datetimes)
+    hours = map(hour, datetimes)
+    
+    dataframe[!, :year] = years
+    dataframe[!, :month] = months
+    dataframe[!, :weekday] = weekdays
+    dataframe[!, :day] = days
+    dataframe[!, :hour] = hours
 
-# TODO plot weekday and count
-boxplot(origindata[!, :weekday], origindata[!, :count]) |> display
+    return dataframe
+  end
+
+  featureSelector = FeatureSelector(
+    features = [:datetime],
+    ignore = true
+  )
+
+  function coerceCount!(dataframe::DataFrame)
+    coerce!(dataframe, Count => Continuous)
+    return dataframe
+  end
+
+  transformModel = Pipeline(
+    transformDateTime!,
+    featureSelector,
+    onehotEncoder,
+    coerceCount!
+  )
+
+  transformMachine = machine(transformModel, testdata)
+  fit!(transformMachine)
+  transformedTestData  = MLJ.transform(transformMachine, copy(testdata))
+  return transformedTestData
+end
+
+traindata = CSV.read("data/bike-sharing/train.csv", DataFrame)
+testdata = CSV.read("data/bike-sharing/test.csv", DataFrame)
+
+transformedTrainData = fetchTransformedTrainData(traindata)
+transformedTestData = fetchTransformedTestData(testdata)
+
+# TODO MLJFlux prediction
+using MLJFlux, Flux, StableRNGs
+mutable struct NetworkBuilder <: MLJFlux.Builder
+  n1::Int
+  n2::Int
+  n3::Int
+  n4::Int
+end
+
+function MLJFlux.build(model::NetworkBuilder, rng, nin, nout)
+  init = Flux.glorot_uniform(rng)
+  return Chain(
+    Dense(nin, model.n1, relu, init = init),
+    Dense(model.n1, model.n2, relu, init = init),
+    Dense(model.n2, model.n3, relu, init = init),
+    Dense(model.n3, model.n4, relu, init = init),
+    Dense(model.n4, nout, relu, init = init)
+  )
+end
+
+function fetchMachine(inputdata::DataFrame)
+  rng = StableRNG(1234)
+  regressor = NeuralNetworkRegressor(
+    lambda = 0.01,
+    builder = NetworkBuilder(10, 8, 6, 6),
+    batch_size = 5,
+    epochs = 600,
+    alpha = 0.4,
+    rng = rng
+  )
+
+  y, X = unpack(inputdata, colname -> colname == :count, colname -> true)
+  trainrow, testrow = partition(eachindex(y), 0.7, rng = rng)
+  regressorMachine = machine(regressor, X, y)
+  fit!(regressorMachine, rows = trainrow)
+  return regressorMachine
+end
+
+function predictOutput(inputdata::DataFrame, inputtest::DataFrame)
+  mach = fetchMachine(inputdata)
+  
+  output = MLJ.predict(mach, inputtest)
+  outputdataframe = DataFrame()
+  outputdataframe[!, :datetime] = testdata[!, :datetime]
+  outputdataframe[!, :count] = output
+  CSV.write("data/bike-sharing/submissing.csv", outputdataframe)
+
+end
+
+predictOutput(transformedTrainData, transformedTestData)
+
+# TODO make function but not global data
+# TODO plot origin y and predict y
+function plotPrediction(dataframe::DataFrame, output::Vector)
+  difference = output .- dataframe[!, :count]
+  plot(difference) |> display
+end
+
+regressor = fetchMachine(transformedTrainData)
+measure = evaluate!(regressor,
+                    resampling = CV(nfolds = 6, rng = rng),
+                    measure = [l1, l2],
+                    rows = testrow)
+
+println(measure)
+
+columns = names(transformedTrainData)
+columns = columns[columns .!= "count"]
+plotPrediction(transformedTrainData, MLJ.predict(regressor, select(transformedTrainData, columns)))
