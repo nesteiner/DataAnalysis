@@ -240,27 +240,7 @@ function MLJFlux.build(model::NetworkBuilder, rng, nin, nout)
   )
 end
 
-function fetchMachine(inputdata::DataFrame)
-  rng = StableRNG(1234)
-  regressor = NeuralNetworkRegressor(
-    lambda = 0.01,
-    builder = NetworkBuilder(10, 8, 6, 6),
-    batch_size = 5,
-    epochs = 600,
-    alpha = 0.4,
-    rng = rng
-  )
-
-  y, X = unpack(inputdata, colname -> colname == :count, colname -> true)
-  trainrow, testrow = partition(eachindex(y), 0.7, rng = rng)
-  regressorMachine = machine(regressor, X, y)
-  fit!(regressorMachine, rows = trainrow)
-  return regressorMachine
-end
-
-function predictOutput(inputdata::DataFrame, inputtest::DataFrame)
-  mach = fetchMachine(inputdata)
-  
+function predictOutput(mach::Machine, inputtest::DataFrame)
   output = MLJ.predict(mach, inputtest)
   outputdataframe = DataFrame()
   outputdataframe[!, :datetime] = testdata[!, :datetime]
@@ -269,8 +249,6 @@ function predictOutput(inputdata::DataFrame, inputtest::DataFrame)
 
 end
 
-predictOutput(transformedTrainData, transformedTestData)
-
 # TODO make function but not global data
 # TODO plot origin y and predict y
 function plotPrediction(dataframe::DataFrame, output::Vector)
@@ -278,14 +256,31 @@ function plotPrediction(dataframe::DataFrame, output::Vector)
   plot(difference) |> display
 end
 
-regressor = fetchMachine(transformedTrainData)
+
+# ATTENTION use function to get data, but not model
+rng = StableRNG(1234)
+regressor = NeuralNetworkRegressor(
+  lambda = 0.01,
+  builder = NetworkBuilder(10, 8, 6, 6),
+  batch_size = 5,
+  epochs = 600,
+  alpha = 0.4,
+  rng = rng
+)
+
+y, X = unpack(transformedTrainData, colname -> colname == :count, colname -> true)
+trainrow, testrow = partition(eachindex(y), 0.7, rng = rng)
+regressor = machine(regressor, X, y)
+fit!(regressor, rows = trainrow)
+
 measure = evaluate!(regressor,
                     resampling = CV(nfolds = 6, rng = rng),
                     measure = [l1, l2],
                     rows = testrow)
 
-println(measure)
 
 columns = names(transformedTrainData)
 columns = columns[columns .!= "count"]
 plotPrediction(transformedTrainData, MLJ.predict(regressor, select(transformedTrainData, columns)))
+
+predictOutput(regressor, transformedTestData)
