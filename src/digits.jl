@@ -1,5 +1,6 @@
 using MLJFlux, MLJ, Flux, DataFrames, CSV, StableRNGs
 
+# data is from https://storage.googleapis.com/kaggle-competitions-data/kaggle-v2/3004/861823/bundle/archive.zip?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1662392812&Signature=XW9sn0GDV2Ee402XxKEWhmvVvD4joHsvex0Wk9Lr1jgdUpWEnxFMRFXTKsEtwi3%2F9NN5z3PuYp6vE7d%2Ffm3raqg8W3wA62X0R55Q7AIg8hbWogbXVPnFLYuaBjoADkqgzcwwEYRKYvytca1JpUHXCxsD6LuN8JBIo02Ztzovb2aMvPlezF%2B8yxc%2B1g72%2BGIFj%2FubfEdJjv%2FVu1eNcJ%2FVYU1ooWhn34Npi3ylYzA470E9QmZgEWWGy2I48iMgo70N07XdRemrr4m0roNolwhK65XlnZi4Wo7Z%2F%2BT3c5%2B6S6vhvApqOxO7ji42fLuUD%2Bba01bR3hrTGcrNyjTkqv1trQ%3D%3D&response-content-disposition=attachment%3B+filename%3Ddigit-recognizer.zip
 origindata = CSV.read("data/digits-recognizer/train.csv", DataFrame)
 
 mutable struct NetworkBuilder <: MLJFlux.Builder
