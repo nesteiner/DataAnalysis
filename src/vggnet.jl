@@ -1,4 +1,4 @@
-using Flux
+using Flux, MLJFlux
 import MLJFlux
 
 struct VGGNet

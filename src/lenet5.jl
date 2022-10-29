@@ -1,6 +1,6 @@
-using Flux
+using Flux, MLJFlux
 import StableRNGs: StableRNG
-import MLJFlux
+
 
 struct LeNet5 
     batchsize::Int

@@ -1,6 +1,5 @@
-using Flux
+using Flux, MLJFlux
 import StableRNGs: StableRNG
-import MLJFlux
 
 struct AlexNet
     batchsize::Int

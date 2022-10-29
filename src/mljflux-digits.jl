@@ -33,11 +33,14 @@ function loadtestdata(path::AbstractString)
   return images
 end
 
+include("lenet5.jl")
+include("alexnet.jl")
+
 function makepredict(pathtrain::AbstractString, pathtest::AbstractString, pathsubmission::AbstractString)
   rng = StableRNG(1234)
   y, X = loaddata(pathtrain)
-  # trainrow, testrow = partition(eachindex(y), 0.7, rng = rng)
-  model = buildmodel()
+  # model = buildLeNet(batchsize = 32, epochs = 1, lambda = 10.0f0, alpha = 0.5f0)
+  model = buildAlexNet(batchsize = 32, epochs = 1, lambda = 10.0f0, alpha = 0.5f0, usegpu = false)
   mach = machine(model, X, y)
   fit!(mach; verbosity = 2)
 
@@ -50,72 +53,6 @@ function makepredict(pathtrain::AbstractString, pathtest::AbstractString, pathsu
   CSV.write(pathsubmission, outputdataframe)
 end
 
-mutable struct LeNet5 <: MLJFlux.Builder
-  filtersize::Int
-  channels1::Int
-  channels2::Int
-  channels3::Int
-end
-
-function MLJFlux.build(lenet5::LeNet5, rng, nin, nout, nchannels)
-  @info nin
-  k, c1, c2, c3 = lenet5.filtersize, lenet5.channels1, lenet5.channels2, lenet5.channels3
-  mod(k, 2) == 1 || error("filter size must be odd")
-  p = div(k - 1, 2)
-  init = Flux.glorot_uniform(rng)
-
-  front = Chain(
-    Conv((k, k), nchannels => c1, pad = (p, p), relu, init = init),
-    MaxPool((2, 2)),
-    Conv((k, k), c1 => c2, pad = (p, p), relu, init = init),
-    MaxPool((2, 2)),
-    Conv((k, k), c2 => c3, pad = (p, p), relu, init = init),
-    MaxPool((2, 2)),
-    x -> reshape(x, (:, last(size(x))))
-  )
-
-  d = Flux.outputsize(front, (nin..., nchannels, 1)) |> first
-  return Chain(front, Dense(d, nout, init = init))
-end
-
-function buildmodel()
-  classifier = ImageClassifier(
-    builder = LeNet5(5, 16, 32, 32),
-    batch_size = 50,
-    epochs = 1,
-    rng = StableRNG(1234),
-    lambda = 0.01,
-    alpha = 0.4
-  )
-  return classifier
-end
-
-struct Net end
-
-function MLJFlux.build(net::Net, rng, nin, nout, nchannels)
-    array = (nin..., nchannels, 32)
-    # this is ok
-    return @autosize (nin..., nchannels, 32) Chain(
-      Conv((5, 5), _ => 6, relu),
-      MaxPool((2, 2)),
-      Conv((5, 5), _ => 16, relu),
-      MaxPool((2, 2)),
-      Flux.flatten,
-      Dense(_ => 120, relu),
-      Dense(120 => 84, relu),
-      Dense(84 => nout)
-    )
-end
-
-function buildmodel()
-  return ImageClassifier(
-    builder = Net(),
-    batch_size = 32,
-    epochs = 5,
-    rng = StableRNG(1234),
-    lambda = 0.01,
-    alpha = 0.4
-  )
-end
-
-makepredict("data/digits-recognizer/train.csv", "data/digits-recognizer/test.csv", "data/digits-recognizer/submission.csv")
+makepredict("data/digits-recognizer/train.csv", 
+            "data/digits-recognizer/test.csv", 
+            "data/digits-recognizer/submission.csv")
