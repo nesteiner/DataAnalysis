@@ -18,3 +18,8 @@
 - [[https://www.kaggle.com/competitions/bike-sharing-demand/][kaggle 链接]]
 - [[file:docs/bike.org][文档]]
 - [[file:src/bike.jl][代码文件]]
+
+** Digits Recognizer
+- [[https://www.kaggle.com/competitions/digit-recognizer][kaggle链接]]
+- [[file:docs/digits.org][文档]]
+- [[file:src/mljflux-digits.jl][代码文件]]
