@@ -1,0 +1,356 @@
+* 介绍
+下面给出几个网络的实现和对比，有 Nvidia GPU 的同学试一下 =usegpu=true= ，我看看你们训练要多久
+** LeNet5
+*** Tensorflow
+#+begin_src python
+  model = tf.keras.models.Sequential([
+      tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), activation='sigmoid'),
+      tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=2),
+      tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='sigmoid'),
+      tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=2),
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(120, activation='sigmoid'),
+      tf.keras.layers.Dense(84, activation='sigmoid'),
+      tf.keras.layers.Dense(10, activation='softmax')
+  ])
+#+end_src
+
+*** MLJFlux
+#+begin_src julia
+  import Flux: @autosize
+  import StableRNGs: StableRNG
+  import MLJFlux
+
+  struct LeNet5 
+      batchsize::Int
+  end
+
+  function MLJFlux.build(lenet5::LeNet5, rng, nin, nout, nchannels)
+      return @autosize (nin..., nchannels, lenet5.batchsize) Chain(
+        Conv((5, 5), _ => 6, relu),
+        MaxPool((2, 2)),
+        Conv((5, 5), _ => 16, relu),
+        MaxPool((2, 2)),
+        Flux.flatten,
+        Dense(_ => 120, relu),
+        Dense(120 => 84, relu),
+        Dense(84 => nout)
+      )
+  end
+
+  function buildLeNet(;batchsize::Int, epochs::Int, lambda::Float32, alpha::Float32, usegpu = false)
+      return ImageClassifier(
+          builder = LeNet5(batchsize),
+          batch_size = batchsize,
+          epochs = epochs,
+          rng = StableRNG(1234),
+          lambda = lambda,
+          alpha = alpha,
+          acceleration = usegpu ? CUDALibs() : CPU1()
+      )
+  end
+#+end_src
+
+
+** AlexNet
+*** Tensorflow
+#+begin_src python
+  model = tf.keras.models.Sequential([
+      tf.keras.layers.Conv2D(filters=96, kernel_size=(3, 3)),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2),
+
+      tf.keras.layers.Conv2D(filters=256, kernel_size=(3, 3)),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2),
+
+      tf.keras.layers.Conv2D(filters=384, kernel_size=(3, 3), padding='same', activation='relu'),
+      tf.keras.layers.Conv2D(filters=384, kernel_size=(3, 3), padding='same', activation='relu'),
+      tf.keras.layers.Conv2D(filters=256, kernel_size=(3, 3), padding='same', activation='relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(3, 3), strides=2),
+
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(2048, activation='relu'),
+      tf.keras.layers.Dropout(0.5),
+      tf.keras.layers.Dense(2048, activation='relu'),
+      tf.keras.layers.Dropout(0.5),
+      tf.keras.layers.Dense(10, activation='softmax')
+  ])
+#+end_src
+*** MLJFlux
+#+begin_src julia
+  using Flux
+  import StableRNGs: StableRNG
+  import MLJFlux
+
+  struct AlexNet
+      batchsize::Int
+  end
+
+  function MLJFlux.build(alexnet::AlexNet, rng, nin, nout, nchannels)
+      return @autosize (nin..., nchannels, alexnet.batchsize) Chain(
+          Conv((3, 3), nchannels => 96),
+          BatchNorm(_, relu),
+          MaxPool((3, 3), stride = 2),
+
+          Conv((3, 3), _ => 256),
+          BatchNorm(_, relu),
+          MaxPool((3, 3), stride = 2),
+
+          Conv((3, 3), _ => 384, relu, pad = SamePad()),
+          Conv((3, 3), _ => 384, relu, pad = SamePad()),
+          Conv((3, 3), _ => 256, relu, pad = SamePad()),
+          MaxPool((3, 3), stride = 2),
+
+          flatten,
+          Dense(_ => 2048, relu),
+          Dropout(0.5),
+          Dense(_ => 2048, relu),
+          Dropout(0.5),
+          Dense(_ => nout)
+      )
+  end
+
+
+  function buildAlexNet(;batchsize::Int, epochs::Int, lambda::Float32, alpha::Float32, usegpu = false)
+      return ImageClassifier(
+          builder = AlexNet(batchsize),
+          batch_size = batchsize,
+          epochs = epochs,
+          rng = StableRNG(1234),
+          lambda = lambda,
+          alpha = alpha,
+          acceleration = usegpu ? CUDALibs() : CPU1()
+      )
+  end
+#+end_src
+** VGGNet
+*** Tensorflow
+#+begin_src python
+  model = tf.keras.models.Sequential([
+      tf.keras.layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='same'),
+      tf.keras.layers.Dropout(0.2),
+
+      tf.keras.layers.Conv2D(filters=128, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=128, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='same'),
+      tf.keras.layers.Dropout(0.2),
+
+      tf.keras.layers.Conv2D(filters=256, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=256, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=256, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='same'),
+      tf.keras.layers.Dropout(0.2),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size = (2, 2), strides = 2, padding = 'same'),
+      tf.keras.layers.Dropout(0.2),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+
+      tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same'),
+      tf.keras.layers.BatchNormalization(),
+      tf.keras.layers.Activation('relu'),
+      tf.keras.layers.MaxPool2D(pool_size = (2, 2), strides = 2, padding = 'same'),
+      tf.keras.layers.Dropout(0.2),
+
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(512, activation = 'relu'),
+      tf.keras.layers.Dropout(0.2),
+      tf.keras.layers.Dense(512, activation = 'relu'),
+      tf.keras.layers.Dropout(0.2),
+      tf.keras.layers.Dense(10, activation = 'softmax')
+  ])
+#+end_src
+*** MLJFlux
+#+begin_src julia
+  using Flux
+  import MLJFlux
+
+  struct VGGNet
+      batchsize::Int
+  end
+
+  function MLJFlux.build(vggnet::VGGNet, rng, nin, nout, nchannels)
+      return @autosize (nin..., nchannels, vggnet.batchsize) Chain(
+          Conv((3, 3), nchannels => 64, pad = SamePad()),
+          BatchNorm(64, relu),
+
+          Conv((3, 3), _ => 64, pad = SamePad()),
+          BatchNorm(_, relu),
+          MaxPool((2, 2), stride = 2, pad = SamePad()),
+          Dropout(0.2),
+
+          Conv((3, 3), _ => 128, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 128, pad = SamePad()),
+          BatchNorm(_, relu),
+          MaxPool((2, 2), stride = 2, pad = SamePad()),
+          Dropout(0.2),
+
+          Conv((3, 3), _ => 256, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 256, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 256, pad = SamePad()),
+          BatchNorm(_, relu),
+          MaxPool((2, 2), stride = 2, pad = SamePad()),
+          Dropout(0.2),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+          MaxPool((2, 2), stride = 2, pad = SamePad()),
+          Dropout(0.2),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+
+          Conv((3, 3), _ => 512, pad = SamePad()),
+          BatchNorm(_, relu),
+          MaxPool((2, 2), stride = 2, pad = SamePad()),
+          Dropout(0.2),
+
+          flatten,
+        
+          Dense(_ => 512, relu),
+          Dropout(0.2),
+          Dense(_ => 512, relu),
+          Dropout(0.2),
+          Dense(_ => nout)
+      )
+  end
+
+  function buildVGGNet(;batchsize::Int, epochs::Int, lambda::Float32, alpha::Float32, usegpu = false)
+      return ImageClassifier(
+          builder = VGGNet(batchsize),
+          batch_size = batchsize,
+          epochs = epochs,
+          rng = StableRNG(1234),
+          lambda = lambda,
+          alpha = alpha,
+          acceleration = usegpu ? CUDALibs() : CPU1()
+      )
+  end
+#+end_src
+* 预测代码示例
+** 数据下载
+https://www.kaggle.com/competitions/digit-recognizer
+
+下载完数据后，解压放在 =data/digits-recognizer= 目录下即可
+
+#+DOWNLOADED: screenshot @ 2022-10-29 19:37:18
+[[file:images/预测代码示例/2022-10-29_19-37-18_screenshot.png]]
+
+** 准备阶段
+#+begin_src julia
+  using MLJFlux, Flux, StableRNGs, MLJ, CSV
+  using Flux: onehotbatch
+  using DataFrames: DataFrame
+
+  # load data
+  function transformDataType!(dataframe::DataFrame)
+    coerce!(dataframe, Count => Continuous)
+    if in(:label, names(dataframe))
+      coerce!(dataframe, :label => Multiclass)
+    end
+
+    return dataframe
+  end
+
+
+  function loaddata(path::AbstractString)
+    origindata = CSV.read(path, DataFrame)
+    transformDataType!(origindata)
+    y, X = unpack(origindata, colname -> colname == :label, colname -> true)
+    images = reshape(transpose(Matrix(X)) ./ 255.0, (28, 28, :))
+
+    labels = coerce(y, Multiclass)
+    images = coerce(images, GrayImage)
+
+    return labels, images
+  end
+
+  function loadtestdata(path::AbstractString)
+    testdata = CSV.read(path, DataFrame)
+    transformDataType!(testdata)
+    images = reshape(transpose(Matrix(testdata)) ./ 255.0, (28, 28, :))
+    images = coerce(images, GrayImage)
+    return images
+  end
+
+#+end_src
+
+** 预测
+#+begin_src julia
+  function makepredict(pathtrain::AbstractString, pathtest::AbstractString, pathsubmission::AbstractString)
+    rng = StableRNG(1234)
+    y, X = loaddata(pathtrain)
+    # model = buildLeNet5(batchsize = 32, epochs = 50, lambda = 10.0f0, alpha = 0.5f0, usegpu = true)
+    # model = buildVGGNet(batchsize = 32, epochs = 50, lambda = 10.0f0, alpha = 0.5f0, usegpu = true)
+    model = buildAlexNet(batchsize = 32, epochs = 1, lambda = 10.0f0, alpha = 0.5f0, usegpu = false)
+    mach = machine(model, X, y)
+    fit!(mach; verbosity = 2)
+
+    testdata = loadtestdata(pathtest)
+    output = map(x -> convert(Int, x), mode.(predict(mach, testdata)))
+
+    outputdataframe = DataFrame()
+    outputdataframe[!, :ImageId] = 1:length(output);
+    outputdataframe[!, :Label] = output
+    CSV.write(pathsubmission, outputdataframe)
+  end
+
+  makepredict("data/digits-recognizer/train.csv", 
+              "data/digits-recognizer/test.csv", 
+              "data/digits-recognizer/submission.csv")
+#+end_src
