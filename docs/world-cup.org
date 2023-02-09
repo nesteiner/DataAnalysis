@@ -1,0 +1,445 @@
+* 介绍
+这篇文章参考自 [[https://tianchi.aliyun.com/notebook/440183][这个notebook]] ，无意中看到的，觉得不错，就用Julia重新写了一遍，我们用到的库有
+- Plots
+- DataFrames
+- CSV
+- StatsPlots
+- StatsBase
+
+* 世界杯数据可视化分析
+** 准备
+#+begin_src julia
+  using Plots, CSV, DataFrames
+  plotly()
+  Plots.default(show=true)
+#+end_src
+** 分析世界杯成绩汇总表
+#+begin_src julia
+  histWorldCup = CSV.read("data/world-cup/WorldCupsSummary.csv", DataFrame)
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:16:43
+[[file:images/世界杯数据可视化分析/2023-02-09_18-16-43_screenshot.png]]
+
+该数据表包含了从1930到2018年间共21届世界杯赛事的汇总信息（1942、1946两年因二战停办），从HostContinent列中我们可以得知2002年韩日世界杯是世界杯首次落户亚洲，2010年南非世界杯是首次落户非洲。
+
+从表格中我们还可以看到"Germany FR(联邦德国)"的信息，因此有必要对数据进行清洗，接下来我们进行数据预处理：
+** 数据预处理
+#+begin_src julia
+  let columns = names(histWorldCup)
+    for column in columns
+      replace!(histWorldCup[!, column], "Germany FR" => "Germany")
+    end
+  end
+#+end_src
+
+完成基础的数据预处理工作之后，我们来分析如下问题：
+
+- 历年现场观众人数变化趋势
+- 参赛队伍数变化趋势
+- 历年进球数变化趋势
+- 历史上夺冠次数最多的国家队是哪支?
+- 夺冠队伍所在洲分析
+- 哪些国家队能经常打入决赛/半决赛?
+- 进入决赛的队伍夺冠概率是多少?
+- 东道主（主办国）进入决赛/半决赛大吗?
+
+** 历年现场观众人数变化趋势
+#+begin_src julia
+  let title = "Attendance Number"
+      x = histWorldCup.Attendance
+      y = histWorldCup.Year
+      xticks = [500000, 1000000, 1500000, 2000000, 250000000, 3000000, 35000000, 4000000]
+      yticks = histWorldCup.Year
+
+      scatter(x, y, xticks=(:all, xticks), yticks=yticks, title=title) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:21:39
+[[file:images/世界杯数据可视化分析/2023-02-09_18-21-39_screenshot.png]]
+可以看到，世界杯的现场观众总数整体呈上升趋势（1942、1946因二战停办两届），观众总数最多的一届是1994年的美国世界杯
+** 参赛队伍数变化趋势
+#+begin_src julia
+  let title = "QUalifiedTeams Number"
+      x = histWorldCup.QualifiedTeams
+      y = histWorldCup.Year
+      xticks = [0, 16, 24, 32, 48]
+      yticks = histWorldCup.Year
+
+      scatter(x, y, xticks=(:all, xticks), yticks=yticks, title=title) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:22:49
+[[file:images/世界杯数据可视化分析/2023-02-09_18-22-49_screenshot.png]]
+可以看到，世界杯参赛队伍从13支扩展到现在的32支。期间经历了两次队伍扩充，分别是1982年由16支队伍扩充到24支，以及1998年从24支扩充到32支。在下一届世界杯（2026美加墨世界杯），FIFA决定将参赛队伍扩充到48支。有了参赛队伍数的分析后，我们再来看看历届世界杯进球总数：
+** 历年进球数变化趋势
+#+begin_src julia
+  let title = "Goals Number"
+      x = histWorldCup.GoalsScored
+      y = histWorldCup.Year
+      xticks = [50, 75, 100, 125, 150, 175, 200]
+      yticks = histWorldCup.Year
+
+      scatter(x, y, xticks=(:all, xticks), yticks=yticks, title=title) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:23:53
+[[file:images/世界杯数据可视化分析/2023-02-09_18-23-53_screenshot.png]]
+可以看到，随着世界杯参赛队伍的增多，比赛总进球数也在增加。目前单届世界杯总进球数均没有超过175球，我们可以看看2022卡塔尔世界杯结束后能否创造进球数记录。
+分析完总体趋势后，我们再来看看各支队伍夺冠情况/进入四强的情况
+** 夺冠次数分析
+#+begin_src julia
+  # 夺冠次数分析
+  import StatsBase: countmap
+  let title = "Champion Number Statistic"
+      x = histWorldCup.Winner
+      cmap = countmap(x)
+      xs = convert(Vector{String}, collect(keys(cmap)))
+      ys = collect(values(cmap))
+
+      bar(xs, ys, title=title) |> display
+  end
+
+#+end_src
+
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:25:08
+[[file:images/世界杯数据可视化分析/2023-02-09_18-25-08_screenshot.png]]
+可以看到巴西是夺冠次数最多的国家，无愧足球王国的称号。德国、意大利两个足球紧随其后，分别是4次夺冠。我们再来看看各国家队进入半决赛（4强）和决赛的次数统计。
+** 半决赛（4强）队伍次数统计
+#+begin_src julia
+  cmap1 = countmap(histWorldCup.Winner)
+  cmap2 = countmap(histWorldCup.Second)
+  cmap3 = countmap(histWorldCup.Third)
+  cmap4 = countmap(histWorldCup.Fourth)
+
+  countries = DataFrame()
+  _countries = cat(collect(keys(cmap1)),
+                  collect(keys(cmap2)),
+                  collect(keys(cmap3)),
+                  collect(keys(cmap4)), dims=1) |> unique |> sort
+
+  countries[!, :Index] = _countries
+  fn(country::AbstractString, cmap::Dict{<:AbstractString,Int}) = begin
+      if !haskey(cmap, country)
+          return 0
+      else
+          return cmap[country]
+      end
+  end
+
+  countries[!, :Winner] = map(x -> fn(x, cmap1), countries[!, :Index])
+  countries[!, :Second] = map(x -> fn(x, cmap2), countries[!, :Index])
+  countries[!, :Third] = map(x -> fn(x, cmap3), countries[!, :Index])
+  countries[!, :Fourth] = map(x -> fn(x, cmap4), countries[!, :Index])
+
+  countries[!, :SemiFinal] = countries[!, :Winner] .+ countries[!, :Second] .+ countries[!, :Third] .+ countries[!, :Fourth]
+  countries[!, :Final] = countries[!, :Winner] .+ countries[!, :Second]
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:26:36
+[[file:images/世界杯数据可视化分析/2023-02-09_18-26-36_screenshot.png]]
+#+begin_src julia
+  let
+      x = countries[!, :Index]
+      y = countries[!, :SemiFinal]
+      title = "SemiFinal Statistic"
+      bar(x, y, title=title, xrotation=45, xticks=:all) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:27:44
+[[file:images/世界杯数据可视化分析/2023-02-09_18-27-44_screenshot.png]]
+可以看到，德国队是进入半决赛次数最多的队伍，紧随其后的是巴西队和意大利队，这和夺冠数量的分布基本一致。我们再来看看进入决赛的队伍统计，是否也是这个趋势
+** 决赛队伍次数统计
+#+begin_src julia
+  filterfn = [:Winner, :Second] => (winner, second) -> !((winner == 0) & (second == 0) != 0)
+  finalist = filter(filterfn, countries)
+
+  let x = finalist[!, :Index]
+    y = finalist[!, :Final]
+    title = "Final Statistic"
+    bar(x, y, title = title, xticks = :all, xrotation = 45) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:28:58
+[[file:images/世界杯数据可视化分析/2023-02-09_18-28-58_screenshot.png]]
+同样的结论，德国、巴西、意大利3个足球强国也是进入决赛次数最多的队伍。接下来我们来看看进入决赛后各支队伍夺冠的概率如何？
+** 进入决赛后夺冠以来分析
+#+begin_src julia
+  let
+    finalist[!, :ChampionProb] = finalist[!, :Winner] ./ finalist[:, :Final]
+    indexs = (finalist[!, :Second] .> 0) .| (finalist[!, :Winner] .> 0)
+    ratios = finalist[indexs, :]
+
+    x = ratios[!, :Index]
+    y = ratios[!, :ChampionProb]
+    title = "Percentage of winning reaching the final"
+    bar(x, y, title = title, xticks = :all, xrotation = 45) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:30:22
+[[file:images/世界杯数据可视化分析/2023-02-09_18-30-22_screenshot.png]]
+我们可以看到英格兰队、西班牙队和乌拉圭队进入决赛后均获得冠军，夺冠概率是100%。 不过从半决赛（4强）队伍次数统计中的结果我们可以看到，英格兰、西班牙、乌拉圭这3支队伍进入决赛的次数分别是1次、1次和2次，统计数据有较大的不确定性。我们还是拿德国、巴西、意大利3支世界杯强队来看，巴西进入决赛夺冠的概率略胜一筹。
+巴西、德国、意大利3支强队代表了南美洲和欧洲足球的最高水平，这两个大洲也是现代足球的发源和兴起地，相信很多球迷朋友都会关注五大联赛（注：五大联赛是指西甲、英超、德甲、意甲和法甲），足以说明足球在欧洲的盛行。我们来看看世界杯夺冠队伍所在洲的分布，是不是以南美和欧洲为主
+** 夺冠队伍所在大洲分布
+#+begin_src julia
+  let cmap = countmap(histWorldCup.WinnerContinent)
+    xs = collect(keys(cmap))
+    ys = collect(values(cmap))
+    title = "Champion Continent Numbers"
+    bar(xs, ys, title = title, xticks = :all) |> display
+
+    summary = reduce(+, ys)
+    _values = map(x -> x / summary, ys)
+    title = "Champion Continent Ratios"
+    pie(xs, _values, title = title) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:31:47
+[[file:images/世界杯数据可视化分析/2023-02-09_18-31-47_screenshot.png]]
+** 东道主进入半决赛/决赛/夺冠概率统计
+#+begin_src julia
+  let hostTop4 = map(row -> in(row.HostCountry, [row.Winner, row.Second, row.Third, row.Fourth]) ? 1 : 0, eachrow(histWorldCup))
+    cmap = countmap(hostTop4)
+    x = collect(keys(cmap))
+    y = collect(values(cmap))
+    title = "Host in Top4"
+    bar(x, y, title = title, xticks = :all) |> display
+
+    summary = reduce(+, y)
+    _values = map(x -> x / summary, y)
+
+    title = "Percentage"
+    pie(x, _values, title = title) |> display
+  end
+
+  # 东道主进入决赛概率
+  let hostTop2 = map(row -> in(row.HostCountry, [row.Winner, row.Second]) ? 1 : 0, eachrow(histWorldCup))
+    cmap = countmap(hostTop2)
+    x = collect(keys(cmap))
+    y = collect(values(cmap))
+    title = "Host in Top2"
+    bar(x, y, title = title, xticks = :all) |> display
+
+    summary = reduce(+, y)
+    _values = map(x -> x / summary, y)
+
+    title = "Percentage"
+    pie(x, _values, title = title) |> display
+  end
+  # 东道主夺冠概率
+  let hostWinner = map(row -> row.HostCountry == row.Winner ? 1 : 0, eachrow(histWorldCup))
+    cmap = countmap(hostWinner)
+    x = collect(keys(cmap))
+    y = collect(values(cmap))
+    title = "Host in Winner"
+    bar(x, y, title = title, xticks = :all) |> display
+
+    summary = reduce(+, y)
+    _values = map(x -> x / summary, y)
+
+    title = "Percentage"
+    pie(x, _values, title = title) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:33:29
+[[file:images/世界杯数据可视化分析/2023-02-09_18-33-29_screenshot.png]]
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:35:23
+[[file:images/世界杯数据可视化分析/2023-02-09_18-35-23_screenshot.png]]
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:35:43
+[[file:images/世界杯数据可视化分析/2023-02-09_18-35-43_screenshot.png]]
+** 分析世界杯比赛信息表¶
+#+begin_src julia
+  matches = CSV.read("data/world-cup/WorldCupMatches.csv", DataFrame)
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:37:24
+[[file:images/世界杯数据可视化分析/2023-02-09_18-37-24_screenshot.png]]
+
+中国队参加的比赛
+#+begin_src julia
+  let indexs = (matches[!, Symbol("Away Team Name")] .== "China PR") .| (matches[!, Symbol("Home Team Name")] .== "China PR")
+    matches[indexs, :]
+  end
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:39:29
+[[file:images/世界杯数据可视化分析/2023-02-09_18-39-29_screenshot.png]]
+** 数据预处理
+类似分析世界杯汇总信息，在数据预处理阶段，我们来完成数据清洗和特殊字段的添加工作：
+#+begin_src julia
+  # 统一联邦德国和德国
+  let columns = names(matches)
+    for column in columns
+      replace!(matches[!, column], "Germany FR" => "Germany")
+    end
+  end
+
+  # 类型转化
+  matches[!, "Home Team Goals"] = convert(Vector{Int}, matches[!, "Home Team Goals"])
+  matches[!, "Away Team Goals"] = convert(Vector{Int}, matches[!, "Away Team Goals"])
+  matches[!, "Result"] = map((x, y) -> "$(x) - $(y)", matches[!, "Home Team Goals"], matches[!, "Away Team Goals"])
+
+#+end_src
+** 现场观赛人数分析
+#+begin_src julia
+  let top5Attendance = first(sort(matches, [order(:Attendance, rev=true)]), 5)
+    top5Attendance[!, :VS] = map((x, y) -> "$(x) VS $(y)", top5Attendance[!, "Home Team Name"], top5Attendance[!, "Away Team Name"])
+    x = top5Attendance[!, :VS]
+    y = top5Attendance[!, :Attendance]
+    bar(x, y) |> display
+  end
+#+end_src
+这里数据有些问题，在 =Attendance= 字段有缺失值，这里我省略掉
+** 比赛进球分析
+比赛最令球迷兴奋的当然是进球了，我们来找出历史上单场比赛进球数最多的比赛
+#+begin_src julia
+  matches[!, :TotalGoals] = matches[!, "Home Team Goals"] .+ matches[!, "Away Team Goals"]
+  matches[!, :VS] = map((x, y) -> "$(x) VS $(y)", matches[!, "Home Team Name"], matches[!, "Away Team Name"])
+
+  let top10Goals = first(sort(matches, [order(:TotalGoals, rev=true)]), 10)
+    top10Goals[!, :VS] = map((x, y) -> "$(x) VS $(y)", top10Goals[!, "Home Team Name"], top10Goals[!, "Away Team Name"])
+    top10Goals[!, :TotalGoalsStr] = map(x -> "$(x) goals scored", top10Goals[!, "TotalGoals"])
+    top10Goals[!, "Home Team Goals"] = convert(Vector{Int}, top10Goals[!, "Home Team Goals"])
+    top10Goals[!, "Away Team Goals"] = convert(Vector{Int}, top10Goals[!, "Away Team Goals"])
+    top10Goals[!, "Result"] = map((x, y) -> "$(x) - $(y)", top10Goals[!, "Home Team Goals"], top10Goals[!, "Away Team Goals"])
+
+    x = top10Goals[!, "VS"]
+    y = top10Goals[!, "TotalGoals"]
+    title = "Top10 Goals Match"
+
+    bar(x, y, title = title, xrotation = 90, xticks = :all) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:42:44
+[[file:images/世界杯数据可视化分析/2023-02-09_18-42-44_screenshot.png]]
+
+我们再来分析比赛分差最大的比赛
+#+begin_src julia
+  let
+    matches[!, "DifferenceGoals"] = abs.(matches[!, "Home Team Goals"] .- matches[!, "Away Team Goals"])
+    top10Difference = first(sort(matches, [order("DifferenceGoals", rev = true)]), 10)
+    top10Difference[!, "DifferenceGoals"] = convert(Vector{Int}, top10Difference[!, "DifferenceGoals"])
+    top10Difference[!, "DifferenceGoalsStr"] = map(x -> "$(x) goals difference", top10Difference[!, "DifferenceGoals"])
+    top10Difference[!, "Result"] = map((x, y) -> "$(x) - $(y)", top10Difference[!, "Home Team Goals"], top10Difference[!, "Away Team Goals"])
+
+    x = top10Difference[!, "VS"]
+    y = top10Difference[!, "DifferenceGoals"]
+    title = "Top10 Biggest Difference Matches"
+
+
+    bar(x, y, title = title, xrotation = 90) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:43:49
+[[file:images/世界杯数据可视化分析/2023-02-09_18-43-49_screenshot.png]]
+可以看到，top10分差大的比赛都是聚集在小组赛阶段（stage：GroupX），只有一场是发生在16进8阶段。一般来说进入淘汰赛阶段，两队都会打得比较谨慎，发生大开大合比分的概率比较小
+** 进球数分析
+我们再来看看世界杯历史上进球最多的国家，大家可以先猜一下会不会分布在巴西队、德国队和意大利队这3个足球强国中：
+#+begin_src julia
+  using StatsPlots
+  let columns = names(matches)
+    for column in columns
+      replace!(matches[!, column], "Germany FR" => "Germany")
+    end
+
+    listCountries = unique(matches[!, "Home Team Name"])
+    listHome = Int[]
+    listAway = Int[]
+    for country in listCountries
+      indexs = matches[!, "Home Team Name"] .== country
+      goalsHome = reduce(+, matches[!, "Home Team Goals"][indexs])
+      push!(listHome, goalsHome)
+
+      indexs = matches[!, "Away Team Name"] .== country
+      goalsAway = reduce(+, matches[!, "Away Team Goals"][indexs])
+      push!(listAway, goalsAway)
+    end
+
+    df = DataFrame(Country = listCountries, TotalHomeGoals = listHome, TotalAwayGoals = listAway)
+    df[!, "TotalGoals"] = df[!, "TotalHomeGoals"] .+ df[!, "TotalAwayGoals"]
+    mostGoals = first(sort(df, [order(:TotalGoals, rev=true)]), 10)
+
+    x = mostGoals[!, "Country"]
+    y = select(mostGoals, ["TotalHomeGoals", "TotalAwayGoals", "TotalGoals"]) |> Matrix 
+    groupedbar(x, y, xrotation = 90, labels = ["TotalHomeGoals" "TotalAwayGoals" "TotalGoals"]) |> display
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:44:59
+[[file:images/世界杯数据可视化分析/2023-02-09_18-44-59_screenshot.png]]
+和我们猜想的差不多，历史进球最多的队伍分别是德国队、巴西队、阿根廷队和意大利队；主场进球最队的国家队分别是巴西队、德国队、阿根廷队和意大利队；客场进球排名是德国、巴西、西班牙和法国队。
+大家可能会有个疑问世界杯比赛为什么要分主客场？ 此处给大家做个科普，其实世界杯比赛的“主客场”并非真实意义的主、客场，主要是用来区分主客场球衣，方便区分参赛队伍双方的球衣颜色
+看完进球数，我们再来分析失球数
+** 失球数
+#+begin_src julia
+  let finalista = finalist[!, :Index]
+    goalsConcededHome = Int[]
+    goalsConcededAway = Int[]
+    match1 = Int[]
+    match2 = Int[]
+
+    for country in finalista
+      indexs = matches[!, "Home Team Name"] .== country
+      goalsConcHome = reduce(+, matches[!, "Away Team Goals"][indexs])
+      push!(goalsConcededHome, goalsConcHome)
+      counted1 = reduce(+, indexs)
+    
+      indexs = matches[!, "Away Team Name"] .== country
+      goalsConcAway = reduce(+, matches[!, "Home Team Goals"][indexs])
+      push!(goalsConcededAway, goalsConcAway)
+      counted2 = reduce(+, indexs)
+
+      push!(match1, counted1)
+      push!(match2, counted2)
+    end
+
+    df = DataFrame(Country = finalista, GoalsConcededHome = goalsConcededHome, GoalsConcededAway = goalsConcededAway, MatchesHome = match1, MatchesAway = match2)
+    df[!, "TotalMatches"] = df[!, "MatchesHome"] .+ df[!, "MatchesAway"]
+    df[!, "TotalGoalsConceded"] = df[!, "GoalsConcededHome"] .+ df[!, "GoalsConcededAway"]
+    df[!, "GoalMatchRate"] = round.(df[!, "TotalGoalsConceded"] ./ df[!, "TotalMatches"], digits = 2)
+
+    goalsConceded = first(sort(df, [order("GoalMatchRate", rev=true)]), 10)
+
+    x = goalsConceded[!, "Country"]
+    y = goalsConceded[!, "TotalGoalsConceded"]
+    bp1 = bar(x, y, xrotation = 90)
+
+    x = goalsConceded[!, "Country"]
+    y = goalsConceded[!, "GoalMatchRate"]
+    bp2 = bar(x, y)
+
+    plot(bp1, bp2) |> display
+  
+  end
+
+#+end_src
+
+#+DOWNLOADED: screenshot @ 2023-02-09 18:47:03
+[[file:images/世界杯数据可视化分析/2023-02-09_18-47-03_screenshot.png]]
+可以看出，总失球数最多的进入决赛圈的国家分别是德国、巴西、阿根廷和意大利，这也和这四支强队进入到决赛次数多是正相关的。
+从场均失球率来看，英格兰队、荷兰队和意大利队的场均失球率均低于1，说明这三支球队比较擅长防守
