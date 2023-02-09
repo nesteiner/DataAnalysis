@@ -23,3 +23,8 @@
 - [[https://www.kaggle.com/competitions/digit-recognizer][kaggle链接]]
 - [[file:docs/digits.org][文档]]
 - [[file:src/mljflux-digits.jl][代码文件]]
+
+** World Cup
+- [[https://tianchi.aliyun.com/notebook/440183][参考文章]]
+- [[file:docs/world-cup.org][文档]]
+- [[file:src/world-cup.jl][代码文件]]
